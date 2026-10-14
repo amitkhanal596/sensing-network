@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sonified Network</title>
+  <style>
+    :root {
+      --bg: #05060b;
+      --fg: #eef0ff;
+      --muted: #9097b8;
+      --glass: rgba(16, 19, 34, 0.62);
+      --edge: rgba(150, 165, 255, 0.16);
+      --accent: #8b9cff;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(ellipse at 50% 40%, #121633 0%, var(--bg) 70%);
+      color: var(--fg);
+      font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    #stage { position: fixed; inset: 0; }
+    #stage canvas { display: block; touch-action: none; }
+
+    .glass {
+      background: var(--glass);
+      border: 1px solid var(--edge);
+      border-radius: 14px;
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    header {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      pointer-events: none;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+
+    #info {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      width: 280px;
+      padding: 16px 18px;
+      transition: opacity 0.25s, transform 0.25s;
+    }
+
+    #info.empty { opacity: 0.75; }
+
+    #info h2 {
+      margin: 0 0 2px;
+      font-size: 22px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #info .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      box-shadow: 0 0 12px currentColor;
+      background: currentColor;
+    }
+
+    #info .tag {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 1px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--edge);
+      color: var(--muted);
+    }
+
+    #info .hint { color: var(--muted); margin: 0; }
+
+    .attr { margin: 10px 0 0; }
+    .attr .row { display: flex; justify-content: space-between; font-size: 13px; }
+    .attr .row span:first-child { color: var(--muted); }
+    .bar { height: 4px; border-radius: 4px; background: rgba(255, 255, 255, 0.08); margin-top: 4px; overflow: hidden; }
+    .bar div { height: 100%; border-radius: 4px; transition: width 0.35s ease; }
+
+    .sound {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--edge);
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px;
+      text-align: center;
+    }
+
+    .sound b { display: block; font-size: 15px; }
+    .sound span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    #legend {
+      position: fixed;
+      left: 16px;
+      bottom: 88px;
+      max-width: 330px;
+      padding: 12px 14px;
+      font-size: 12.5px;
+    }
+
+    #legend ul { margin: 0; padding-left: 16px; color: var(--muted); }
+    #legend .keys { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+    #legend .keys span { display: inline-flex; align-items: center; gap: 6px; }
+    #legend .keys i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+    #controls {
+      position: fixed;
+      left: 50%;
+      bottom: 16px;
+      transform: translateX(-50%);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+      padding: 8px;
+      max-width: calc(100vw - 32px);
+    }
+
+    button {
+      font: inherit;
+      color: var(--fg);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--edge);
+      border-radius: 10px;
+      padding: 7px 12px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    button:hover { background: rgba(139, 156, 255, 0.14); border-color: rgba(139, 156, 255, 0.45); }
+    button:disabled { opacity: 0.4; cursor: default; }
+    button[aria-pressed="true"] { background: rgba(139, 156, 255, 0.24); border-color: var(--accent); }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    #controls label { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; color: var(--muted); }
+    #controls input[type=range] { width: 90px; accent-color: var(--accent); }
+
+    .label {
+      position: fixed;
+      left: 0;
+      top: 0;
+      font-size: 11px;
+      color: rgba(230, 234, 255, 0.55);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      white-space: nowrap;
+      text-shadow: 0 0 6px #000;
+      will-change: transform;
+    }
+
+    .label.hot { color: #fff; font-weight: 600; font-size: 13px; }
+
+    #toast {
+      position: fixed;
+      top: 76px;
+      left: 16px;
+      max-width: 320px;
+      padding: 10px 12px;
+      font-size: 12.5px;
+      color: #ffd59a;
+      display: none;
+    }
+
+    #intro {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(5, 6, 11, 0.55);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 10;
+      transition: opacity 0.5s;
+      padding: 16px;
+    }
+
+    #intro .card { padding: 28px 32px; max-width: 440px; text-align: center; }
+    #intro h1 { margin: 0 0 8px; font-size: 26px; }
+    #intro p { color: var(--muted); margin: 0 0 20px; }
+    #intro button { font-size: 16px; padding: 10px 26px; background: rgba(139, 156, 255, 0.25); border-color: var(--accent); }
+
+    @media (max-width: 760px) {
+      #info { top: auto; bottom: 150px; right: 16px; left: 16px; width: auto; }
+      #legend { display: none; }
+      header p { display: none; }
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+
+<body>
+  <div id="stage"></div>
+  <div id="labels"></div>
+
+  <header>
+    <h1>Sonified Sensing Network</h1>
+    <p>Click a node to hear it. Hold and drag across nodes to strum.</p>
+  </header>
+
+  <aside id="info" class="glass empty" aria-live="polite">
+    <h2>No node selected</h2>
+    <p class="hint">Click any node in the network.</p>
+  </aside>
+
+  <aside id="legend" class="glass">
+    <ul id="legendList"></ul>
+    <div class="keys" id="legendKeys"></div>
+  </aside>
+
+  <div id="toast" class="glass" role="status"></div>
+
+  <nav id="controls" class="glass">
+    <button id="tourBtn" title="Space">▶ Play all</button>
+    <button id="neighBtn" disabled title="N">Neighbours</button>
+    <button id="stopBtn" title="Esc">■ Stop</button>
+    <button id="modeBtn" aria-pressed="false" title="Hold a node to sustain its tone">Sustain</button>
+    <button id="speakBtn" aria-pressed="false">Speak</button>
+    <button id="rotateBtn" aria-pressed="true">Rotate</button>
+    <label>Vol <input id="volume" type="range" min="0" max="1" step="0.01" value="0.35"></label>
+  </nav>
+
+  <div id="intro">
+    <div class="card glass">
+      <h1>Sonified Sensing Network</h1>
+      <p id="introText">Every node plays its data. Pitch and brightness follow degree, waveform follows community, and pulse rate follows betweenness.</p>
+      <button id="enterBtn">Enable sound and explore</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+    import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+    import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+    import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+    import { SonificationEngine } from "./js/sonification.js";
+
+    const $ = (sel) => document.querySelector(sel);
+    const PALETTE = ["#5eead4", "#a78bfa", "#f472b6", "#fbbf24", "#60a5fa", "#f87171", "#34d399", "#fb923c"];
+    const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+
+    const engine = new SonificationEngine(null, { mode: "discrete" });
+    let spec = null;
+    let speak = false;
+    let selected = null;
+    let tourToken = 0;
+
+    // ---------- data ----------
+
+    async function fetchJson(path) {
+      try {
+        const res = await fetch(path, { cache: "no-store" });
+        return res.ok ? await res.json() : null;
+      } catch {
+        return null;
+      }
+    }
+
+    const linkKey = (a, b) => [String(a), String(b)].sort().join("-");
+
+    // Use the fabricated layout only when it describes the same graph as the
+    // spec; otherwise a stale layout from another run would misplace nodes.
+    function layoutMatches(layout, spec) {
+      if (!layout || !layout.nodes || layout.nodes.length !== spec.nodes.length) return false;
+      const a = new Set(layout.links.map((l) => linkKey(l.source, l.target)));
+      const b = (spec.links || []).map(([s, t]) => linkKey(s, t));
+      return a.size === b.length && b.every((k) => a.has(k));
+    }
+
+    // Small force-directed fallback for forms without a fabricated layout.
+    function forceLayout(ids, links) {
+      const n = ids.length;
+      const index = new Map(ids.map((id, i) => [id, i]));
+      const pos = ids.map((_, i) => {
+        const phi = Math.acos(1 - (2 * (i + 0.5)) / n);
+        const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+        return new THREE.Vector3().setFromSphericalCoords(60, phi, theta);
+      });
+      const edges = links.map(([s, t]) => [index.get(String(s)), index.get(String(t))]);
+      for (let iter = 0; iter < 400; iter++) {
+        const cool = 1 - iter / 400;
+        const force = pos.map(() => new THREE.Vector3());
+        for (let i = 0; i < n; i++) {
+          for (let j = i + 1; j < n; j++) {
+            const d = pos[i].clone().sub(pos[j]);
+            const len = Math.max(d.length(), 1);
+            d.multiplyScalar(1800 / (len * len * len));
+            force[i].add(d);
+            force[j].sub(d);
+          }
+        }
+        for (const [i, j] of edges) {
+          const d = pos[j].clone().sub(pos[i]);
+          d.multiplyScalar((d.length() - 40) * 0.02);
+          force[i].add(d);
+          force[j].sub(d);
+        }
+        pos.forEach((p, i) => p.add(force[i].clampLength(0, 6 * cool + 0.2)));
+      }
+      return pos;
+    }
+
+    function noteName(hz) {
+      const midi = Math.round(69 + 12 * Math.log2(hz / 440));
+      return `${NOTE_NAMES[((midi % 12) + 12) % 12]}${Math.floor(midi / 12) - 1}`;
+    }
+
+    function formatValue(v) {
+      return Math.abs(v - Math.round(v)) < 1e-9 ? String(Math.round(v)) : Number(v).toPrecision(3);
+    }
+
+    // ---------- scene ----------
+
+    const stage = $("#stage");
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    stage.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x05060b, 0.0028);
+
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 4000);
+    camera.position.set(0, 60, 300);
+
+    scene.add(new THREE.AmbientLight(0x8890ff, 0.5));
+    const key = new THREE.PointLight(0xffffff, 2.2, 0, 0);
+    key.position.set(150, 200, 250);
+    scene.add(key);
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.75, 0.4, 0.35);
+    composer.addPass(bloom);
+    composer.addPass(new OutputPass());
+
+    // Faint starfield for depth.
+    {
+      const g = new THREE.BufferGeometry();
+      const pts = new Float32Array(1800 * 3);
+      for (let i = 0; i < pts.length; i += 3) {
+        const v = new THREE.Vector3().randomDirection().multiplyScalar(700 + Math.random() * 900);
+        pts.set([v.x, v.y, v.z], i);
+      }
+      g.setAttribute("position", new THREE.BufferAttribute(pts, 3));
+      scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0x9aa4ff, size: 1.6, transparent: true, opacity: 0.55, fog: false })));
+    }
+
+    function glowTexture() {
+      const c = document.createElement("canvas");
+      c.width = c.height = 128;
+      const ctx = c.getContext("2d");
+      const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      grad.addColorStop(0, "rgba(255,255,255,1)");
+      grad.addColorStop(0.25, "rgba(255,255,255,0.45)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(c);
+    }
+    const GLOW = glowTexture();
+
+    const nodes = new Map(); // id -> { mesh, halo, color, radius, label }
+    const linkObjs = []; // { line, a, b }
+    const ripples = [];
+    const graph = new THREE.Group();
+    scene.add(graph);
+
+    function buildGraph(positions) {
+      const ids = spec.nodes.map(String);
+      const meta = spec.metadata || {};
+      const attrs = spec.attributes || {};
+      const primary = attrs[meta.primary] || null;
+      const category = attrs[meta.categorical] || null;
+      const pMin = primary ? Math.min(...primary) : 0;
+      const pMax = primary ? Math.max(...primary) : 1;
+
+      // Centre and normalise so any layout fits the same camera.
+      const centre = new THREE.Vector3();
+      positions.forEach((p) => centre.add(p));
+      centre.divideScalar(positions.length);
+      const extent = Math.max(...positions.map((p) => p.distanceTo(centre)), 1);
+      const s = 110 / extent;
+      const pts = positions.map((p) => p.clone().sub(centre).multiplyScalar(s));
+      const baseR = Math.min(meta.node_radius ? meta.node_radius * s : 7, 12);
+
+      ids.forEach((id, i) => {
+        const norm = primary && pMax > pMin ? (primary[i] - pMin) / (pMax - pMin) : 0.5;
+        const color = new THREE.Color(
+          category ? PALETTE[Math.round(category[i]) % PALETTE.length]
+                   : new THREE.Color().setHSL(0.62 - 0.5 * norm, 0.8, 0.6).getStyle()
+        );
+        const radius = baseR * (0.7 + 0.6 * norm);
+        const mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(radius, 40, 24),
+          new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.22, roughness: 0.35, metalness: 0.1 })
+        );
+        mesh.position.copy(pts[i]);
+        mesh.userData.id = id;
+        graph.add(mesh);
+
+        const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: GLOW, color, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false,
+        }));
+        halo.scale.setScalar(radius * 3.5);
+        halo.position.copy(pts[i]);
+        graph.add(halo);
+
+        const label = document.createElement("div");
+        label.className = "label";
+        label.textContent = id;
+        $("#labels").appendChild(label);
+
+        nodes.set(id, { mesh, halo, color, radius, label, flash: 0, hover: 0, dim: 0 });
+      });
+
+      for (const [a, b] of spec.links || []) {
+        const A = nodes.get(String(a));
+        const B = nodes.get(String(b));
+        if (!A || !B) continue;
+        const geo = new THREE.BufferGeometry().setFromPoints([A.mesh.position, B.mesh.position]);
+        geo.setAttribute("color", new THREE.Float32BufferAttribute([...A.color.toArray(), ...B.color.toArray()], 3));
+        const line = new THREE.Line(geo, new THREE.LineBasicMaterial({
+          vertexColors: true, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false,
+        }));
+        graph.add(line);
+        linkObjs.push({ line, a: String(a), b: String(b) });
+      }
+    }
+
+    function neighboursOf(id) {
+      const out = [];
+      for (const l of linkObjs) {
+        if (l.a === id) out.push(l.b);
+        else if (l.b === id) out.push(l.a);
+      }
+      return out;
+    }
+
+    function ripple(id, strength = 1) {
+      const n = nodes.get(id);
+      if (!n) return;
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.9, 1, 64),
+        new THREE.MeshBasicMaterial({
+          color: n.color, transparent: true, opacity: 0.9 * strength, side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        })
+      );
+      ring.position.copy(n.mesh.position);
+      ring.userData = { born: performance.now(), r: n.radius, strength };
+      graph.add(ring);
+      ripples.push(ring);
+    }
+
+    // ---------- interaction ----------
+
+    function select(id) {
+      selected = id;
+      const neigh = new Set(neighboursOf(id));
+      nodes.forEach((n, nid) => { n.dim = id === null || nid === id || neigh.has(nid) ? 0 : 1; });
+      for (const l of linkObjs) {
+        const hot = id !== null && (l.a === id || l.b === id);
+        l.line.material.opacity = id === null ? 0.55 : hot ? 1 : 0.08;
+      }
+      $("#neighBtn").disabled = id === null;
+      renderInfo(id);
+    }
+
+    function trigger(id, { fromTour = false } = {}) {
+      const n = nodes.get(id);
+      if (!n) return;
+      n.flash = 1;
+      ripple(id);
+      if (selected !== id) select(id);
+      if (speak && !fromTour) engine.speakNode(id);
+    }
+
+    function renderInfo(id) {
+      const el = $("#info");
+      if (id === null) {
+        el.classList.add("empty");
+        el.innerHTML = `<h2>No node selected</h2><p class="hint">Click any node in the network.</p>`;
+        return;
+      }
+      el.classList.remove("empty");
+      const tone = spec.tones.find((t) => String(t.node) === id) || { attributes: {}, params: {} };
+      const params = engine.paramsFor(id);
+      const n = nodes.get(id);
+      const meta = spec.metadata || {};
+      const tag = String(meta.in_node) === id ? "send electrode" : String(meta.out_node) === id ? "receive electrode" : "";
+      const hex = `#${n.color.getHexString()}`;
+      const attrs = Object.entries(tone.attributes || {}).map(([name, v]) => {
+        const all = (spec.attributes || {})[name] || [v];
+        const lo = Math.min(...all);
+        const hi = Math.max(...all);
+        const pct = hi > lo ? ((v - lo) / (hi - lo)) * 100 : 100;
+        return `<div class="attr"><div class="row"><span>${name}</span><span>${formatValue(v)}</span></div>
+                <div class="bar"><div style="width:${Math.max(pct, 3)}%;background:${hex}"></div></div></div>`;
+      }).join("");
+      el.innerHTML = `
+        <h2><i class="swatch" style="color:${hex}"></i>Node ${id} ${tag ? `<span class="tag">${tag}</span>` : ""}</h2>
+        ${attrs}
+        <div class="sound">
+          <div><b>${noteName(params.pitch)}</b><span>${Math.round(params.pitch)} Hz</span></div>
+          <div><b>${params.timbre || "sine"}</b><span>wave</span></div>
+          <div><b>${params.pulse_rate ? params.pulse_rate.toFixed(1) : "–"}</b><span>pulses/s</span></div>
+        </div>`;
+    }
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    let hovered = null;
+    let holding = false;
+
+    function pick(event) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObjects([...nodes.values()].map((n) => n.mesh), false)[0];
+      return hit ? hit.object.userData.id : null;
+    }
+
+    // Registered before OrbitControls so a press on a node can disable
+    // orbiting before the controls see the event.
+    renderer.domElement.addEventListener("pointerdown", (e) => {
+      const id = pick(e);
+      if (id === null) return;
+      if (!engine.ctx || engine.ctx.state !== "running") engine.start();
+      cancelTour();
+      holding = true;
+      controls.enabled = false;
+      engine.setTouchedNode(id);
+      trigger(id);
+    });
+
+    renderer.domElement.addEventListener("pointermove", (e) => {
+      const id = pick(e);
+      hovered = id;
+      renderer.domElement.style.cursor = id !== null ? "pointer" : holding ? "grabbing" : "grab";
+      // Dragging across nodes acts like a finger sliding over the print.
+      if (holding && id !== null && id !== engine.currentNode) {
+        engine.setTouchedNode(id);
+        trigger(id);
+      }
+    });
+
+    const release = () => {
+      if (!holding) return;
+      holding = false;
+      controls.enabled = true;
+      engine.setTouchedNode(null);
+    };
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.6;
+    controls.minDistance = 80;
+    controls.maxDistance = 700;
+
+    // ---------- tour ----------
+
+    function cancelTour() {
+      tourToken++;
+      $("#tourBtn").setAttribute("aria-pressed", "false");
+    }
+
+    async function playSequence(ids) {
+      const token = ++tourToken;
+      $("#tourBtn").setAttribute("aria-pressed", "true");
+      for (const id of ids) {
+        if (token !== tourToken) return;
+        const p = engine.paramsFor(id);
+        trigger(id, { fromTour: true });
+        engine.playNode(id);
+        const prefix = Array.isArray(p.identity_prefix)
+          ? p.identity_prefix.length * ((p.identity_prefix_duration ?? 0.09) + (p.identity_prefix_gap ?? 0.04) * 0.5)
+          : 0;
+        await new Promise((r) => setTimeout(r, (Math.max(0.05, p.duration) + prefix + 0.12) * 1000));
+      }
+      if (token === tourToken) cancelTour();
+    }
+
+    $("#tourBtn").onclick = () => playSequence(spec.nodes.map(String));
+    $("#neighBtn").onclick = () => selected !== null && playSequence([selected, ...neighboursOf(selected)]);
+    $("#stopBtn").onclick = () => { cancelTour(); engine.stop(); window.speechSynthesis?.cancel(); select(null); };
+
+    const toggle = (btn, on) => btn.setAttribute("aria-pressed", String(on));
+    $("#modeBtn").onclick = (e) => {
+      engine.stop();
+      engine.mode = engine.mode === "discrete" ? "continuous" : "discrete";
+      toggle(e.currentTarget, engine.mode === "continuous");
+    };
+    $("#speakBtn").onclick = (e) => { speak = !speak; toggle(e.currentTarget, speak); };
+    $("#rotateBtn").onclick = (e) => { controls.autoRotate = !controls.autoRotate; toggle(e.currentTarget, controls.autoRotate); };
+    $("#volume").oninput = (e) => engine.setMasterGain(Number(e.target.value));
+
+    window.addEventListener("keydown", (e) => {
+      if (e.target.tagName === "INPUT") return;
+      if (e.code === "Space") { e.preventDefault(); $("#tourBtn").click(); }
+      if (e.code === "Escape") $("#stopBtn").click();
+      if (e.code === "KeyN") $("#neighBtn").click();
+    });
+
+    // ---------- render loop ----------
+
+    const tmp = new THREE.Vector3();
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      const now = performance.now();
+
+      nodes.forEach((n, id) => {
+        n.flash *= 0.93;
+        n.hover += ((hovered === id ? 1 : 0) - n.hover) * 0.2;
+        n.dimNow = (n.dimNow ?? 0) + (n.dim - (n.dimNow ?? 0)) * 0.12;
+        const scale = 1 + 0.35 * n.flash + 0.18 * n.hover;
+        n.mesh.scale.setScalar(scale);
+        n.mesh.material.emissiveIntensity = (0.22 + 1.6 * n.flash + 0.3 * n.hover) * (1 - 0.75 * n.dimNow);
+        n.halo.material.opacity = (0.14 + 0.5 * n.flash + 0.12 * n.hover) * (1 - 0.8 * n.dimNow);
+        n.halo.scale.setScalar(n.radius * (3.5 + 3 * n.flash));
+
+        // Sustained touch: keep emitting rings at the node's pulse rate (capped to stay readable).
+        if (holding && engine.mode === "continuous" && engine.currentNode === id) {
+          const rate = Math.min(engine.paramsFor(id).pulse_rate || 2, 4);
+          if (!n.lastPulse || now - n.lastPulse > 1000 / rate) { ripple(id, 0.6); n.lastPulse = now; n.flash = Math.max(n.flash, 0.5); }
+        }
+
+        tmp.copy(n.mesh.position).applyMatrix4(graph.matrixWorld).project(camera);
+        const visible = tmp.z < 1;
+        n.label.style.display = visible ? "" : "none";
+        if (visible) {
+          const x = (tmp.x * 0.5 + 0.5) * window.innerWidth;
+          const y = (-tmp.y * 0.5 + 0.5) * window.innerHeight - n.radius * 2.2 - 8;
+          n.label.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+          n.label.style.opacity = String(1 - 0.7 * n.dimNow);
+        }
+        n.label.classList.toggle("hot", hovered === id || selected === id);
+      });
+
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const ring = ripples[i];
+        const t = (now - ring.userData.born) / 900;
+        if (t >= 1) {
+          graph.remove(ring);
+          ring.geometry.dispose();
+          ring.material.dispose();
+          ripples.splice(i, 1);
+          continue;
+        }
+        ring.quaternion.copy(camera.quaternion);
+        ring.scale.setScalar(ring.userData.r * (1.2 + 4 * t));
+        ring.material.opacity = (1 - t) * (1 - t) * 0.9 * ring.userData.strength;
+      }
+
+      composer.render();
+    }
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // ---------- boot ----------
+
+    function renderLegend() {
+      $("#legendList").innerHTML = (spec.legend || []).map((l) => `<li>${l}</li>`).join("");
+      const meta = spec.metadata || {};
+      const cats = (spec.attributes || {})[meta.categorical];
+      if (cats) {
+        const uniq = [...new Set(cats.map(Math.round))].sort((a, b) => a - b);
+        $("#legendKeys").innerHTML = uniq
+          .map((c) => `<span><i style="background:${PALETTE[c % PALETTE.length]}"></i>${meta.categorical} ${c}</span>`)
+          .join("");
+      }
+      $("#introText").textContent = (spec.legend || []).join(" ");
+    }
+
+    async function boot() {
+      spec = await fetchJson("./data/sonification.json");
+      if (!spec) {
+        $("#introText").textContent = "No data/sonification.json found. Run sonify_pipeline.py first.";
+        $("#enterBtn").disabled = true;
+        return;
+      }
+      engine.setSpec(spec);
+      const layout = await fetchJson("./data/layout.json");
+      let positions;
+      if (layoutMatches(layout, spec)) {
+        const byId = new Map(layout.nodes.map((n) => [String(n.id), n]));
+        positions = spec.nodes.map((id) => {
+          const n = byId.get(String(id));
+          return new THREE.Vector3(n.fx, n.fy, n.fz);
+        });
+      } else {
+        positions = forceLayout(spec.nodes.map(String), spec.links || []);
+      }
+      buildGraph(positions);
+      renderLegend();
+      animate();
+    }
+
+    // Don't block the overlay on resume(): it can stay pending until the next
+    // gesture, and each node press retries it anyway.
+    $("#enterBtn").onclick = () => {
+      engine.start();
+      const intro = $("#intro");
+      intro.style.opacity = "0";
+      setTimeout(() => intro.remove(), 500);
+      const warnings = engine.outputWarnings();
+      if (warnings.length) {
+        const toast = $("#toast");
+        toast.textContent = warnings.join(" ");
+        toast.style.display = "block";
+      }
+    };
+
+    boot();
+  </script>
+</body>
+
+</html>

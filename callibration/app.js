@@ -56,6 +56,10 @@ findSerialPortPath.then(serialPortPath => {
     res.sendFile(path.join(__dirname, 'public', 'calibrate.html'));
   })
 
+  app.get('/network', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'network.html'));
+  })
+
   if (serialPortPath) {
     console.log("Using serial port connection");
     serialPort = new SerialPort({

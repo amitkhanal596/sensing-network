@@ -160,6 +160,15 @@ def publish_to_calibration(out_dir):
     os.makedirs(target_dir, exist_ok=True)
     target = os.path.join(target_dir, "sonification.json")
     shutil.copy(source, target)
+
+    # The 3D view (/network) places nodes at their fabricated positions.
+    # Remove a stale layout when this run has none, so it is not reused.
+    layout_source = os.path.join(out_dir, "nw.json")
+    layout_target = os.path.join(target_dir, "layout.json")
+    if os.path.exists(layout_source):
+        shutil.copy(layout_source, layout_target)
+    elif os.path.exists(layout_target):
+        os.remove(layout_target)
     return target
 
 
