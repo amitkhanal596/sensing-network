@@ -2,7 +2,7 @@ from distutils.core import setup
 
 setup(
     name="sensing_network",
-    version=0.7,
+    version=0.8,
     package_dir={"": "."},
     install_requires=[
         "numpy",
@@ -24,5 +24,12 @@ setup(
         "sensing_network.resistor_link_selection",
         "sensing_network.resistor_path_generation",
         "sensing_network.pipeline",
+        "sensing_network.sonification",
+        "sensing_network.sonification.scales",
+        "sensing_network.sonification.attributes",
+        "sensing_network.sonification.encoding",
+        "sensing_network.sonification.identity",
+        "sensing_network.sonification.forms",
+        "sensing_network.sonification.pipeline",
     ],
 )
