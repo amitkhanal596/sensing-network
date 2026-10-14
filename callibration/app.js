@@ -81,6 +81,12 @@ findSerialPortPath.then(serialPortPath => {
       console.log('Connected to the sensor via TCP');
     });
 
+    // Without a handler, a failed connect (no sensor on the network) crashes
+    // the server; keep serving the pages so /explore's simulation still works.
+    simpleSocketClient.on('error', err => {
+      console.log('Sensor not reachable via TCP:', err.message);
+    });
+
     simpleSocketClient.on('close', () => {
       console.log('Connection closed');
     });
@@ -114,13 +120,23 @@ findSerialPortPath.then(serialPortPath => {
       }
     });
 
-    socket.on('endCollection', jsonData => {
-      fs.writeFileSync('./public/data/data.json', jsonData, 'utf8');
-    });
+    const dataDir = path.join(__dirname, 'public', 'data');
 
-    socket.on('endProcessing', jsonData => {
-      fs.writeFileSync('./public/data/config.json', jsonData, 'utf8');
-    });
+    const writeDataFile = (name, contents) => {
+      try {
+        fs.mkdirSync(dataDir, { recursive: true });
+        fs.writeFileSync(path.join(dataDir, name), contents, 'utf8');
+        console.log(`wrote ${name}`);
+        socket.emit('saved', { file: name });
+      } catch (err) {
+        console.error(`failed to write ${name}:`, err.message);
+        socket.emit('saveError', { file: name, message: err.message });
+      }
+    };
+
+    socket.on('endCollection', jsonData => writeDataFile('data.json', jsonData));
+
+    socket.on('endProcessing', jsonData => writeDataFile('config.json', jsonData));
   });
 
   server.listen(8000);
