@@ -46,6 +46,16 @@ findSerialPortPath.then(serialPortPath => {
     res.sendFile(path.join(__dirname, '/index.html'));
   })
 
+  // The multimodal explorer and the enhanced calibration page, both served
+  // alongside the original calibration page, which is left unchanged.
+  app.get('/explore', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'explore.html'));
+  })
+
+  app.get('/calibrate', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'calibrate.html'));
+  })
+
   if (serialPortPath) {
     console.log("Using serial port connection");
     serialPort = new SerialPort({

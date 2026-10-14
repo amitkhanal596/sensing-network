@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Multimodal Network Explorer</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #fbfbfa;
+      --fg: #1c1c1a;
+      --muted: #6b6b66;
+      --line: #d8d8d2;
+      --accent: #2f5d8a;
+      --panel: #ffffff;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16171a;
+        --fg: #e9e9e6;
+        --muted: #a0a09a;
+        --line: #33343a;
+        --accent: #7fb2e5;
+        --panel: #1e1f23;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 1.5rem;
+      background: var(--bg);
+      color: var(--fg);
+      font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+      max-width: 60rem;
+    }
+
+    h1 { font-size: 1.35rem; margin: 0 0 .25rem; }
+    h2 { font-size: 1rem; margin: 0 0 .6rem; letter-spacing: .01em; }
+
+    .sub { color: var(--muted); margin: 0 0 1.5rem; }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 1rem;
+    }
+
+    .row { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+
+    button {
+      font: inherit;
+      padding: .45rem .85rem;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel);
+      color: var(--fg);
+      cursor: pointer;
+    }
+
+    button:hover { border-color: var(--accent); }
+    button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+    .node-button {
+      min-width: 2.6rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .node-button.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    #nodeButtons { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .5rem; }
+
+    .readout {
+      font-size: 1.6rem;
+      font-weight: 600;
+      margin: .2rem 0;
+    }
+
+    .meter {
+      height: 8px;
+      background: var(--line);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: .4rem 0;
+      max-width: 22rem;
+    }
+
+    #confidenceBar {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width .12s linear;
+    }
+
+    .muted { color: var(--muted); font-size: .88rem; }
+
+    label { display: inline-flex; align-items: center; gap: .35rem; }
+
+    ul { margin: .4rem 0 0; padding-left: 1.1rem; }
+    li { margin-bottom: .25rem; }
+
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    code {
+      background: var(--bg);
+      padding: .1rem .3rem;
+      border-radius: 4px;
+      font-size: .85em;
+    }
+  </style>
+  <script src="./js/libraries/socket.io@4.7.1"></script>
+</head>
+
+<body>
+  <h1>Multimodal Network Explorer</h1>
+  <p class="sub">Touch a node on the physicalization to hear its data. Works without hardware too.</p>
+
+  <div class="panel">
+    <h2>Audio</h2>
+    <div class="row">
+      <button id="startAudioButton" class="primary">Enable audio</button>
+      <label>Mode
+        <select id="modeSelect">
+          <option value="discrete">Discrete (one tone per touch)</option>
+          <option value="continuous">Continuous (sustained while touched)</option>
+        </select>
+      </label>
+      <label>Volume
+        <input id="volumeSlider" type="range" min="0" max="1" step="0.01" value="0.35">
+      </label>
+      <label><input id="speakToggle" type="checkbox"> Speak values</label>
+    </div>
+    <p class="muted"><span id="audioState">audio not started</span> &middot; <span id="specState">loading spec...</span></p>
+    <p class="muted" id="outputWarning" role="status"></p>
+  </div>
+
+  <div class="panel">
+    <h2>Current touch</h2>
+    <p class="readout" id="selectedNode">-</p>
+    <div class="meter"><div id="confidenceBar"></div></div>
+    <p class="muted"><span id="confidenceText">no touch</span> &middot; raw <span id="rawValue">-</span> <span id="rejectReason"></span></p>
+    <p id="nodeDescription"></p>
+    <div class="row">
+      <button id="tourButton">Play all nodes</button>
+      <button id="neighbourButton">Play neighbourhood</button>
+      <button id="stopButton">Stop</button>
+      <button id="simulateButton">Simulate touches</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Nodes</h2>
+    <p class="muted">Click or tab to any node to hear it without the physical object.</p>
+    <div id="nodeButtons"></div>
+  </div>
+
+  <div class="panel">
+    <h2>What the sounds mean</h2>
+    <ul id="legend"></ul>
+    <p class="muted" id="identityNote"></p>
+  </div>
+
+  <div class="panel">
+    <h2>Sensing quality</h2>
+    <p class="muted" id="separation">no config.json found - run calibration first</p>
+  </div>
+
+  <!-- Screen-reader announcements for touch changes. -->
+  <div id="liveRegion" class="sr-only" role="status" aria-live="polite"></div>
+
+  <script src="./js/app.js" type="module"></script>
+</body>
+
+</html>
