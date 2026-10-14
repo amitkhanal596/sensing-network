@@ -16,10 +16,41 @@ IEEE Transactions on Visualization and Computer Graphics, vol. 30, no. 1, pp. 91
 Content
 -----
 * sensing_network: Python modules of the computational pipeline to design a sensing network physicalization.
+  * sensing_network/sonification: Multimodal extension that adds sound to a physicalization (see [SONIFICATION.md](SONIFICATION.md)).
 * arduino: Source code to communicate with Arduino Uno R4 (both wired and WiFi connection examples).
 * network_renderer: Web-based renderer to review a 3D network.
 * calibration: Web-based interface for calibration and sensing test. 
 * evaluation: Source code to regenerate the computational evaluation results shown in the paper.
+* tests: Tests for the sonification layer and the touch classifier.
+
+******
+
+Multimodal (sound + touch) extension
+-----
+
+A physicalization can be felt but not read: a reader can tell one node is
+larger, not that its betweenness is 0.57. The sonification layer adds sound as
+a response to touch, so the object carries its values as well as its shape.
+
+    python sonify_pipeline.py --network usage_scenario --primary degree --secondary betweenness
+    python check_design.py result/sonification.json
+
+See [SONIFICATION.md](SONIFICATION.md) for the design rationale, the
+identity-ambiguity problem it solves, the improved touch classifier, and
+support for line graphs, bar charts, scatterplots, and region maps.
+
+The extension is additive: the published calibration page
+(`callibration/public/index.html` and `js/main.js`) is unchanged, and the new
+interfaces are served alongside it at `/explore` and `/calibrate`.
+
+    python tests/test_sonification.py   # 45 tests
+    node tests/test_classifier.mjs      # 28 tests
+    node tests/test_audio.mjs           # 13 tests
+
+Note: the classifier and drift models are exercised against synthetic noise,
+not against readings from a printed network, and no listening study has been
+run. The perceptual defaults are conservative readings of published limits,
+not measurements of this hardware.
 
 ******
 
