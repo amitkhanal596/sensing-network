@@ -1,0 +1,39 @@
+
+name: Unit Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Python dependencies
+        run: python -m pip install numpy networkx
+
+      - name: Run Python unit tests
+        run: python tests/test_sonification.py
+
+      - name: Run classifier tests
+        run: node tests/test_classifier.mjs
+
+      - name: Run audio tests
+        run: node tests/test_audio.mjs
