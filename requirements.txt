@@ -1,0 +1,22 @@
+# Core Scientific Computing & Graph Processing
+numpy
+scipy
+networkx
+
+# Machine Learning & Neural Network Layout Adjustment
+scikit-learn
+torch
+pytorch-lightning
+
+# Circuit Simulation & Symbolic Math
+sympy
+lcapy
+
+# Multiprocessing & Optimization
+pathos
+
+# 3D Mesh Generation & Geometry Visualization (requires Python < 3.14)
+pyvista
+
+# Watertight boolean CSG for print-ready STL parts
+manifold3d
