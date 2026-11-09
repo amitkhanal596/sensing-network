@@ -30,11 +30,22 @@ import sys
 import warnings
 
 import numpy as np
+import pyvista as pv
 
 warnings.filterwarnings("ignore")
 
 from sensing_network.pipeline import default_pipeline
+from sensing_network.resistor_path_generation import generate_all_paths
+from sensing_network.flat_print import (
+    flat_cut_depth,
+    clip_to_bed,
+    pin_with_web,
+    recentre_and_check_traces,
+)
+from sensing_network.print_parts import build_print_parts
 from sensing_network.convert_utils import (
+    combine_polydata_objects,
+    line_to_cylinder,
     output_to_json,
     output_to_stl,
     output_to_3dforce_json,
@@ -75,10 +86,139 @@ FAST_KWARGS = {
 }
 
 
-def build_network(nodes, links, out_dir, fast=False, skip_stl=False, **son_kwargs):
+def build_flat_4node_network(out_dir, skip_stl=False, **son_kwargs):
+    """
+    Build a clean, planar 4-node network designed to print flat on the print bed
+    without floating parts or support material. All nodes and links lie at Z = 0,
+    and the exported STLs are shifted so the bottom plane touches the bed at Z = 0.
+    """
+    nodes = [0, 1, 2, 3]
+    # Square perimeter with no intersecting links on the XY plane
+    links = [[0, 1], [1, 2], [2, 3], [3, 0]]
+    # Resistor links chain through nodes 0 -> 1 -> 2 -> 3
+    resistor_links = [[0, 1], [1, 2], [2, 3]]
+    resistances = [120000.0, 170000.0, 220000.0]  # achievable on a 50 mm planar link (min ~114k)
+    in_node = 0
+    out_node = 3
+
+    # Clean planar square positions (side length 50mm)
+    half_side = 25.0
+    node_positions = np.array([
+        [-half_side, -half_side, 0.0],
+        [ half_side, -half_side, 0.0],
+        [ half_side,  half_side, 0.0],
+        [-half_side,  half_side, 0.0],
+    ], dtype=float)
+
+    node_radius = 10.0
+    link_radius = 4.5  # a little thicker so the trace stack fits with a flat underside
+    pin_radius = 2.0
+    pin_length = 6.0
+
+    # Print heights above the bed (z = 0). Nodes stay spheres but are sliced flat
+    # at R*sin45 so the lower hemisphere never overhangs more than 45 degrees;
+    # links get the same treatment so they rest on the bed instead of floating.
+    node_cut = flat_cut_depth(node_radius)
+    link_cut = flat_cut_depth(link_radius)
+    node_center_z = node_radius - node_cut
+    link_axis_z = link_radius - link_cut
+
+    print("generating internal serpentine resistor paths for planar links...")
+    h_paths, v_boxes = generate_all_paths(
+        node_positions=node_positions,
+        resistor_links=resistor_links,
+        resistances=resistances,
+        link_radius=link_radius,
+        node_radius=node_radius,
+        vertical_step=1.2,
+        path_margin=0.55,
+        vertical_box_width=0.8,
+        vertical_box_additional_height=0.4,
+        min_node_link_overlap=3.0,
+        vertical_resistivity=930.0,
+        horizontal_resistivity=570.0,
+    )
+    # Keep every trace strictly inside the (bed-clipped) link cross-section.
+    h_paths, v_boxes, trace_report = recentre_and_check_traces(
+        h_paths, v_boxes, resistor_links, node_positions, node_radius,
+        link_radius, link_axis_z, h_width=0.5,
+    )
+    for r in trace_report:
+        print(f"  link {r['link']}: traces z {r['zmin']:.2f}..{r['zmax']:.2f} (design frame), shifted {r['dz']:+.2f}")
+
+    result = {
+        "nodes": nodes,
+        "links": links,
+        "node_positions": node_positions,
+        "node_radius": node_radius,
+        "link_radius": link_radius,
+        "resistor_links": resistor_links,
+        "resistances": resistances,
+        "in_node": in_node,
+        "out_node": out_node,
+        "resistors_h_paths": h_paths,
+        "resistors_v_boxes": v_boxes,
+    }
+
+    os.makedirs(out_dir, exist_ok=True)
+    output_to_json(outfile_path=os.path.join(out_dir, "cad_data.json"), **result)
+    output_to_3dforce_json(
+        nodes,
+        links,
+        node_positions=result["node_positions"],
+        node_radius=result["node_radius"],
+        link_radius=result["link_radius"],
+        outfile_path=os.path.join(out_dir, "nw.json"),
+    )
+
+    if not skip_stl:
+        print("building watertight, bed-aligned parts (boolean CSG)...")
+        parts, csg = build_print_parts(
+            nodes=nodes,
+            links=links,
+            node_positions=node_positions,
+            node_radius=node_radius,
+            link_radius=link_radius,
+            node_center_z=node_center_z,
+            link_axis_z=link_axis_z,
+            h_paths_all=h_paths,
+            v_boxes_all=v_boxes,
+            resistor_links=resistor_links,
+            pin_nodes=(in_node, out_node),
+            pin_radius=pin_radius,
+            pin_length=pin_length,
+        )
+        node_stl, link_stl, resistor_stl = parts["node"], parts["link"], parts["resistor"]
+        for name in ("node", "link", "resistor"):
+            r = csg[name]
+            print(f"  {name:8s} z {r['zmin']:.3f} .. {r['zmax']:.3f}  volume {r['volume']:.0f} mm^3")
+        print(
+            f"  link/conductor overlap {csg['link_conductor_overlap_mm3']:.6f} mm^3, "
+            f"trace leak {csg['trace_leak_mm3']:.6f} mm^3"
+        )
+
+        stl_dir = os.path.join(out_dir, "stl_data")
+        os.makedirs(stl_dir, exist_ok=True)
+        node_stl.save(os.path.join(out_dir, "stl_data.node.stl"))
+        link_stl.save(os.path.join(out_dir, "stl_data.link.stl"))
+        resistor_stl.save(os.path.join(out_dir, "stl_data.resistor.stl"))
+        node_stl.save(os.path.join(stl_dir, "node.stl"))
+        link_stl.save(os.path.join(stl_dir, "link.stl"))
+        resistor_stl.save(os.path.join(stl_dir, "resistor.stl"))
+
+    print("building sonification...")
+    spec = sonify_network(
+        result, outfile_path=os.path.join(out_dir, "sonification.json"), **son_kwargs
+    )
+    return result, spec
+
+
+def build_network(nodes, links, out_dir, fast=False, skip_stl=False, flat=False, **son_kwargs):
     """
     Run the fabrication pipeline and the sonification over the same network.
     """
+    if flat and len(nodes) == 4:
+        return build_flat_4node_network(out_dir, skip_stl=skip_stl, **son_kwargs)
     pipeline_kwargs = dict(
         node_radius=10.0,
         link_radius=3.9,
@@ -233,6 +373,11 @@ def main():
         "--fast", action="store_true", help="fewer optimizer iterations, for iteration"
     )
     parser.add_argument(
+        "--flat",
+        action="store_true",
+        help="lay out nodes planar at Z = 0 and rest the bottom directly on the print bed",
+    )
+    parser.add_argument(
         "--skip-stl", action="store_true", help="skip STL export (much faster)"
     )
     parser.add_argument(
@@ -271,6 +416,7 @@ def main():
             args.out,
             fast=args.fast,
             skip_stl=args.skip_stl,
+            flat=args.flat,
             primary=args.primary,
             secondary=args.secondary,
             pitch_set=args.pitch_set,
